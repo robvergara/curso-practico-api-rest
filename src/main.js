@@ -8,7 +8,19 @@ const api = axios.create({
     }
 });
 
-const createMovies = (movies, container) =>{
+//Utils
+
+const lazyLoader = new IntersectionObserver((entries)=>{
+    entries.forEach((entry)=>{
+        if(entry.isIntersecting){
+            const url = entry.target.getAttribute('data-img');
+            entry.target.setAttribute('src',url);
+        }
+
+    })
+});
+
+const createMovies = (movies, container, lazyload = false) =>{
     container.innerHTML = "";
     movies.forEach(movie => {
 
@@ -21,7 +33,20 @@ const createMovies = (movies, container) =>{
         const movieImg = document.createElement('img');
         movieImg.classList.add('movie-img');
         movieImg.setAttribute('alt', movie.title);
-        movieImg.setAttribute('src',`https://image.tmdb.org/t/p/w300${movie.poster_path}`);
+        movieImg.setAttribute(
+            lazyload ? 'data-img' : 'src',
+            `https://image.tmdb.org/t/p/w300${movie.poster_path}`);
+        //Colocar imagen por defecto en el SRC cuando no cargue por error 400   
+        movieImg.addEventListener('error',()=>{
+            movieImg.setAttribute(
+                'src',
+                 'https://static.platzi.com/static/images/error/img404.png'
+                 );
+        });
+
+        if(lazyload){
+            lazyLoader.observe(movieImg);
+        }
 
         movieContainer.appendChild(movieImg);
         container.appendChild(movieContainer);
@@ -55,7 +80,7 @@ const getTrendingMoviesPreview = async()=>{
     const movies = data.results;
     console.log({data, movies})
 
-    createMovies(movies,TrendingMoviesPreviewList);
+    createMovies(movies,TrendingMoviesPreviewList, true);
 }
 
 const getCategoriesPreview = async()=>{
@@ -76,7 +101,7 @@ const getMoviesByCategory = async(id)=>{
     const movies = data.results;
     //console.log({data, movies})
 
-    createMovies(movies, genericSection);
+    createMovies(movies, genericSection, true);
 }
 
 const getMoviesBySearch = async(query)=>{
