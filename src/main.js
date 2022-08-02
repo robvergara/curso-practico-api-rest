@@ -1,3 +1,5 @@
+//Data
+
 const api = axios.create({
     baseURL: 'https://api.themoviedb.org/3/',
     headers: {
@@ -8,8 +10,32 @@ const api = axios.create({
     }
 });
 
-//Utils
+const likedMoviesList = ()=>{
+    const item = JSON.parse(localStorage.getItem('liked_movies'));
+    let movies;
+    if(item){
+        movies = item;
+    } else{
+        movies= {};
+    }
 
+    return movies;
+}
+
+const likeMovie = (movie)=>{
+        const likedMovies = likedMoviesList();
+
+        if(likedMovies[movie.id]){
+            likedMovies[movie.id] = undefined;
+        } else{
+            //console.log('la pelicula no estaba en localStorage');
+            likedMovies[movie.id] = movie;
+        }
+
+        localStorage.setItem('liked_movies',JSON.stringify(likedMovies));
+     }
+//Utils
+//cargar los poster de las peliculas cuando estan siendo observadas en pantalla
 const lazyLoader = new IntersectionObserver((entries)=>{
     entries.forEach((entry)=>{
         if(entry.isIntersecting){
@@ -20,15 +46,22 @@ const lazyLoader = new IntersectionObserver((entries)=>{
     })
 });
 
-const createMovies = (movies, container, lazyload = false) =>{
+const createMovies = (
+    movies,
+    container,
+    {
+        lazyload = true,
+        clean = true
+    } = {}) =>{
+
+    if(clean){
     container.innerHTML = "";
+    }
+
     movies.forEach(movie => {
 
         const movieContainer = document.createElement("div");
         movieContainer.classList.add('movie-container');
-        movieContainer.addEventListener('click', ()=>{
-            location.hash = `#movie=${movie.id}`
-        })
 
         const movieImg = document.createElement('img');
         movieImg.classList.add('movie-img');
@@ -36,6 +69,9 @@ const createMovies = (movies, container, lazyload = false) =>{
         movieImg.setAttribute(
             lazyload ? 'data-img' : 'src',
             `https://image.tmdb.org/t/p/w300${movie.poster_path}`);
+        movieImg.addEventListener('click', ()=>{
+            location.hash = `#movie=${movie.id}`
+        })
         //Colocar imagen por defecto en el SRC cuando no cargue por error 400   
         movieImg.addEventListener('error',()=>{
             movieImg.setAttribute(
@@ -44,11 +80,20 @@ const createMovies = (movies, container, lazyload = false) =>{
                  );
         });
 
+        const movieBtn = document.createElement('button');
+        movieBtn.classList.add('movie-btn');
+        likedMoviesList()[movie.id] && movieBtn.classList.add('movie-btn--liked');
+        movieBtn.addEventListener('click', ()=>{
+            movieBtn.classList.toggle('movie-btn--liked');
+            likeMovie(movie);
+        });
+
         if(lazyload){
             lazyLoader.observe(movieImg);
         }
 
         movieContainer.appendChild(movieImg);
+        movieContainer.appendChild(movieBtn);
         container.appendChild(movieContainer);
     });
 }
@@ -75,12 +120,14 @@ const createCategories = (categories, container)=>{
     });
 }
 
+//Llamados a la API
+
 const getTrendingMoviesPreview = async()=>{
     const { data } = await api(`trending/movie/day`);
     const movies = data.results;
     console.log({data, movies})
 
-    createMovies(movies,TrendingMoviesPreviewList, true);
+    createMovies(movies,TrendingMoviesPreviewList, {lazyload:true, clean: true});
 }
 
 const getCategoriesPreview = async()=>{
@@ -98,10 +145,35 @@ const getMoviesByCategory = async(id)=>{
             with_genres: id,
         },
     });
+    maxPage = data.total_pages
     const movies = data.results;
     //console.log({data, movies})
 
     createMovies(movies, genericSection, true);
+}
+
+//funcion de paginacion de scroll infinito en la seccion de categorias
+const getPaginatedMoviesByCategories = (id)=>{
+    return async()=>{
+        const {scrollTop, scrollHeight, clientHeight } = document.documentElement;
+
+        const scrollIsBottom = (scrollTop + clientHeight) >= (scrollHeight - 15);
+        const pageIsNotMax = page < maxPage;
+    
+        if(scrollIsBottom && pageIsNotMax){
+            page++;
+            const { data } = await api(`discover/movie`,{
+                params:{
+                    page,
+                    with_genres: id,
+                },
+            });
+            const movies = data.results;
+            //console.log({data, movies})
+            
+            createMovies(movies,genericSection, {lazyload: true, clean: false});
+    }
+    }
 }
 
 const getMoviesBySearch = async(query)=>{
@@ -110,18 +182,74 @@ const getMoviesBySearch = async(query)=>{
             query,
         },
     });
+    maxPage = data.total_pages;
     const movies = data.results;
     //console.log({data, movies})
 
     createMovies(movies, genericSection);
 }
 
+//Funcion de paginacion de scroll infinito en la seccion de busquedas
+const getPaginatedMoviesBySearch = (query)=>{
+    return async()=>{
+        const {scrollTop, scrollHeight, clientHeight } = document.documentElement;
+
+        const scrollIsBottom = (scrollTop + clientHeight) >= (scrollHeight - 15);
+        const pageIsNotMax = page < maxPage;
+    
+        if(scrollIsBottom && pageIsNotMax){
+            page++;
+            const { data } = await api(`search/movie`,{
+                params:{
+                    page,
+                    query,
+                },
+            });
+            const movies = data.results;
+            //console.log({data, movies})
+            
+            createMovies(movies,genericSection, {lazyload: true, clean: false});
+    }
+    }
+}
+
 const getTrendingMovies = async () =>{
         const { data } = await api(`trending/movie/day`);
         const movies = data.results;
+        maxPage = data.total_pages;
         //console.log({data, movies})
     
-        createMovies(movies,genericSection);
+        createMovies(movies,genericSection, {lazyload: true, clean: true});
+
+        //const btnLoadMore = document.createElement('button');
+        //btnLoadMore.innerText = 'Cargar más';
+        //btnLoadMore.addEventListener('click', getPaginatedTrendingMovies)
+        //genericSection.appendChild(btnLoadMore);
+}
+
+//funcion de paginacion scroll infinito en la seccion de tendencias
+const getPaginatedTrendingMovies = async()=>{
+    const {scrollTop, scrollHeight, clientHeight } = document.documentElement;
+
+    const scrollIsBottom = (scrollTop + clientHeight) >= (scrollHeight - 15);
+    const pageIsNotMax = page < maxPage;
+
+    if(scrollIsBottom && pageIsNotMax){
+        page++;
+        const { data } = await api(`trending/movie/day`,{
+            params:{
+                page,
+            },
+        });
+        const movies = data.results;
+        //console.log({data, movies})
+        
+        createMovies(movies,genericSection, {lazyload: true, clean: false});
+    }
+    //const btnLoadMore = document.createElement('button');
+    //btnLoadMore.innerText = 'Cargar más';
+    //btnLoadMore.addEventListener('click', getPaginatedTrendingMovies)
+    //genericSection.appendChild(btnLoadMore);
 }
 
 const getMovieById = async (id) =>{
@@ -151,4 +279,11 @@ const getRelatedMoviesById = async(id) =>{
     const movies = data.results;
 
     createMovies(movies,relatedMoviesContainer);    
+}
+
+const getLikedMovies = () =>{
+    const likedMovies = likedMoviesList();
+
+    const moviesArray = Object.values(likedMovies);
+    createMovies(moviesArray, likedMovieList , {lazyload: true, clean: true})
 }
